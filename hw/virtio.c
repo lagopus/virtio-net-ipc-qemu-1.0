@@ -2,6 +2,7 @@
  * Virtio Support
  *
  * Copyright IBM, Corp. 2007
+ * Copyright (C) 2014 Nippon Telegraph and Telephone Corporation.
  *
  * Authors:
  *  Anthony Liguori   <aliguori@us.ibm.com>
@@ -610,6 +611,10 @@ void virtio_config_writel(VirtIODevice *vdev, uint32_t addr, uint32_t data)
 
 void virtio_queue_set_addr(VirtIODevice *vdev, int n, target_phys_addr_t addr)
 {
+    if (vdev->ipc) {
+        ipc_client_pfn(vdev->ipc, n, addr >> 12);
+        return;
+    }
     vdev->vq[n].pa = addr;
     virtqueue_init(&vdev->vq[n]);
 }
@@ -635,6 +640,10 @@ void virtio_queue_notify_vq(VirtQueue *vq)
 
 void virtio_queue_notify(VirtIODevice *vdev, int n)
 {
+    if (vdev->ipc) {
+        ipc_client_kick(vdev->ipc, n);
+        return;
+    }
     virtio_queue_notify_vq(&vdev->vq[n]);
 }
 
@@ -712,8 +721,10 @@ static bool vring_notify(VirtIODevice *vdev, VirtQueue *vq)
 
 void virtio_notify(VirtIODevice *vdev, VirtQueue *vq)
 {
-    if (!vring_notify(vdev, vq)) {
-        return;
+    if (!vdev->ipc) {
+        if (!vring_notify(vdev, vq)) {
+            return;
+        }
     }
 
     trace_virtio_notify(vdev, vq);
@@ -898,6 +909,8 @@ VirtIODevice *virtio_common_init(const char *name, uint16_t device_id,
         vdev->config = NULL;
 
     vdev->vmstate = qemu_add_vm_change_state_handler(virtio_vmstate_change, vdev);
+
+    vdev->ipc = NULL;
 
     return vdev;
 }

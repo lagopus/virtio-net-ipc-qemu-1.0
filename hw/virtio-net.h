@@ -2,6 +2,7 @@
  * Virtio Network Device
  *
  * Copyright IBM, Corp. 2007
+ * Copyright (C) 2014 Nippon Telegraph and Telephone Corporation.
  *
  * Authors:
  *  Anthony Liguori   <aliguori@us.ibm.com>
@@ -61,6 +62,9 @@ typedef struct virtio_net_conf
     uint32_t txtimer;
     int32_t txburst;
     char *tx;
+    char *socketpath;
+    uint32_t nid;
+    uint32_t cinterval;
 } virtio_net_conf;
 
 /* Maximum packet size we can receive from tap device: header + 64k */
@@ -186,4 +190,8 @@ struct virtio_net_ctrl_mac {
         DEFINE_PROP_BIT("ctrl_rx", _state, _field, VIRTIO_NET_F_CTRL_RX, true), \
         DEFINE_PROP_BIT("ctrl_vlan", _state, _field, VIRTIO_NET_F_CTRL_VLAN, true), \
         DEFINE_PROP_BIT("ctrl_rx_extra", _state, _field, VIRTIO_NET_F_CTRL_RX_EXTRA, true)
+
+#define DEFINE_VIRTIO_NET_IPC_FEATURES(_state, _field) \
+        DEFINE_PROP_BIT("mrg_rxbuf", _state, _field, VIRTIO_NET_F_MRG_RXBUF, true), \
+        DEFINE_PROP_BIT("status", _state, _field, VIRTIO_NET_F_STATUS, true)
 #endif

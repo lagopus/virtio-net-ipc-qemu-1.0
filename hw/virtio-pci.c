@@ -3,6 +3,7 @@
  *
  * Copyright IBM, Corp. 2007
  * Copyright (c) 2009 CodeSourcery
+ * Copyright (C) 2014 Nippon Telegraph and Telephone Corporation.
  *
  * Authors:
  *  Anthony Liguori   <aliguori@us.ibm.com>
@@ -823,6 +824,34 @@ static PCIDeviceInfo virtio_info[] = {
             DEFINE_PROP_INT32("x-txburst", VirtIOPCIProxy,
                               net.txburst, TX_BURST),
             DEFINE_PROP_STRING("tx", VirtIOPCIProxy, net.tx),
+            DEFINE_PROP_END_OF_LIST(),
+        },
+        .qdev.reset = virtio_pci_reset,
+    },{
+        .qdev.name  = "virtio-net-ipc-pci",
+        .qdev.alias = "virtio-net-ipc",
+        .qdev.size  = sizeof(VirtIOPCIProxy),
+        .init       = virtio_net_init_pci,
+        .exit       = virtio_net_exit_pci,
+        .romfile    = "pxe-virtio.rom",
+        .vendor_id  = PCI_VENDOR_ID_REDHAT_QUMRANET,
+        .device_id  = PCI_DEVICE_ID_VIRTIO_NET,
+        .revision   = VIRTIO_PCI_ABI_VERSION,
+        .class_id   = PCI_CLASS_NETWORK_ETHERNET,
+        .qdev.props = (Property[]) {
+            DEFINE_PROP_BIT("ioeventfd", VirtIOPCIProxy, flags,
+                            VIRTIO_PCI_FLAG_USE_IOEVENTFD_BIT, false),
+            DEFINE_PROP_UINT32("vectors", VirtIOPCIProxy, nvectors, 3),
+            DEFINE_VIRTIO_NET_IPC_FEATURES(VirtIOPCIProxy, host_features),
+            DEFINE_NIC_PROPERTIES(VirtIOPCIProxy, nic),
+            DEFINE_PROP_UINT32("x-txtimer", VirtIOPCIProxy,
+                               net.txtimer, TX_TIMER_INTERVAL),
+            DEFINE_PROP_INT32("x-txburst", VirtIOPCIProxy,
+                              net.txburst, TX_BURST),
+            DEFINE_PROP_STRING("tx", VirtIOPCIProxy, net.tx),
+            DEFINE_PROP_STRING("socketpath", VirtIOPCIProxy, net.socketpath),
+            DEFINE_PROP_UINT32("nid", VirtIOPCIProxy, net.nid, 0),
+            DEFINE_PROP_UINT32("cinterval", VirtIOPCIProxy, net.cinterval, 1),
             DEFINE_PROP_END_OF_LIST(),
         },
         .qdev.reset = virtio_pci_reset,

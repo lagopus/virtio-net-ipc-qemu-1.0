@@ -2,6 +2,7 @@
  * Virtio Network Device
  *
  * Copyright IBM, Corp. 2007
+ * Copyright (C) 2014 Nippon Telegraph and Telephone Corporation.
  *
  * Authors:
  *  Anthony Liguori   <aliguori@us.ibm.com>
@@ -20,6 +21,7 @@
 #include "qemu-timer.h"
 #include "virtio-net.h"
 #include "vhost_net.h"
+#include "ipc_client.h"
 
 #define VIRTIO_NET_VM_VERSION    11
 
@@ -183,6 +185,12 @@ static void virtio_net_reset(VirtIODevice *vdev)
 {
     VirtIONet *n = to_virtio_net(vdev);
 
+    /* send a RESET message */
+    if (vdev->ipc) {
+        ipc_client_reset(vdev->ipc);
+        ipc_client_wait_for_end(vdev->ipc);
+    }
+
     /* Reset back to compatibility mode */
     n->promisc = 1;
     n->allmulti = 0;
@@ -276,6 +284,9 @@ static uint32_t virtio_net_bad_features(VirtIODevice *vdev)
 static void virtio_net_set_features(VirtIODevice *vdev, uint32_t features)
 {
     VirtIONet *n = to_virtio_net(vdev);
+
+    if (vdev->ipc)
+        ipc_client_guest_features(vdev->ipc, features);
 
     n->mergeable_rx_bufs = !!(features & (1 << VIRTIO_NET_F_MRG_RXBUF));
 
@@ -598,6 +609,9 @@ static ssize_t virtio_net_receive(VLANClientState *nc, const uint8_t *buf, size_
     VirtIONet *n = DO_UPCAST(NICState, nc, nc)->opaque;
     struct virtio_net_hdr_mrg_rxbuf *mhdr = NULL;
     size_t guest_hdr_len, offset, i, host_hdr_len;
+
+    if (n->vdev.ipc)
+        return size;
 
     if (!virtio_net_can_receive(&n->nic->nc))
         return -1;
@@ -992,6 +1006,14 @@ static NetClientInfo net_virtio_info = {
     .link_status_changed = virtio_net_set_link_status,
 };
 
+static void virtio_net_handle_none(VirtIODevice *vdev, VirtQueue *vq)
+{
+}
+
+static void virtio_net_timer_none(void *opaque)
+{
+}
+
 VirtIODevice *virtio_net_init(DeviceState *dev, NICConf *conf,
                               virtio_net_conf *net)
 {
@@ -1008,7 +1030,10 @@ VirtIODevice *virtio_net_init(DeviceState *dev, NICConf *conf,
     n->vdev.bad_features = virtio_net_bad_features;
     n->vdev.reset = virtio_net_reset;
     n->vdev.set_status = virtio_net_set_status;
-    n->rx_vq = virtio_add_queue(&n->vdev, 256, virtio_net_handle_rx);
+    if (net->socketpath)
+        n->rx_vq = virtio_add_queue(&n->vdev, 256, virtio_net_handle_none);
+    else
+        n->rx_vq = virtio_add_queue(&n->vdev, 256, virtio_net_handle_rx);
 
     if (net->tx && strcmp(net->tx, "timer") && strcmp(net->tx, "bh")) {
         error_report("virtio-net: "
@@ -1017,7 +1042,11 @@ VirtIODevice *virtio_net_init(DeviceState *dev, NICConf *conf,
         error_report("Defaulting to \"bh\"");
     }
 
-    if (net->tx && !strcmp(net->tx, "timer")) {
+    if (net->socketpath) {
+        n->tx_vq = virtio_add_queue(&n->vdev, 256, virtio_net_handle_none);
+        n->tx_timer = qemu_new_timer_ns(vm_clock, virtio_net_timer_none, NULL);
+        n->tx_timeout = net->txtimer;
+    } else if (net->tx && !strcmp(net->tx, "timer")) {
         n->tx_vq = virtio_add_queue(&n->vdev, 256, virtio_net_handle_tx_timer);
         n->tx_timer = qemu_new_timer_ns(vm_clock, virtio_net_tx_timer, n);
         n->tx_timeout = net->txtimer;
@@ -1025,7 +1054,10 @@ VirtIODevice *virtio_net_init(DeviceState *dev, NICConf *conf,
         n->tx_vq = virtio_add_queue(&n->vdev, 256, virtio_net_handle_tx_bh);
         n->tx_bh = qemu_bh_new(virtio_net_tx_bh, n);
     }
-    n->ctrl_vq = virtio_add_queue(&n->vdev, 64, virtio_net_handle_ctrl);
+    if (net->socketpath)
+        n->ctrl_vq = virtio_add_queue(&n->vdev, 64, virtio_net_handle_none);
+    else
+        n->ctrl_vq = virtio_add_queue(&n->vdev, 64, virtio_net_handle_ctrl);
     qemu_macaddr_default_if_unset(&conf->macaddr);
     memcpy(&n->mac[0], &conf->macaddr, sizeof(n->mac));
     n->status = VIRTIO_NET_S_LINK_UP;
@@ -1049,7 +1081,19 @@ VirtIODevice *virtio_net_init(DeviceState *dev, NICConf *conf,
 
     add_boot_device_path(conf->bootindex, dev, "/ethernet-phy@0");
 
+    if (net->socketpath)
+        ipc_init(&n->vdev, net->socketpath, net->nid, net->cinterval);
+
     return &n->vdev;
+}
+
+void virtio_net_set_link_down(VirtIODevice *vdev, int link_down)
+{
+    VirtIONet *net = to_virtio_net(vdev);
+    VLANClientState *nc = &net->nic->nc;
+
+    nc->link_down = link_down;
+    nc->info->link_status_changed(nc);
 }
 
 void virtio_net_exit(VirtIODevice *vdev)
@@ -1058,6 +1102,9 @@ void virtio_net_exit(VirtIODevice *vdev)
 
     /* This will stop vhost backend if appropriate. */
     virtio_net_set_status(vdev, 0);
+
+    if (vdev->ipc)
+        ipc_exit(&n->vdev);
 
     qemu_purge_queued_packets(&n->nic->nc);
 

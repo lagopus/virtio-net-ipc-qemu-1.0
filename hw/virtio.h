@@ -2,6 +2,7 @@
  * Virtio Support
  *
  * Copyright IBM, Corp. 2007
+ * Copyright (C) 2014 Nippon Telegraph and Telephone Corporation.
  *
  * Authors:
  *  Anthony Liguori   <aliguori@us.ibm.com>
@@ -23,6 +24,7 @@
 #ifdef CONFIG_LINUX
 #include "9p.h"
 #endif
+#include "ipc_node.h"
 
 /* from Linux's linux/virtio_config.h */
 
@@ -133,6 +135,12 @@ struct VirtIODevice
     uint16_t device_id;
     bool vm_running;
     VMChangeStateEntry *vmstate;
+
+    ipc_node *ipc;
+    QEMUTimer *ts;
+    char *socketpath;
+    uint32_t nid;
+    uint32_t cinterval;
 };
 
 VirtQueue *virtio_add_queue(VirtIODevice *vdev, int queue_size,
@@ -196,6 +204,7 @@ VirtIODevice *virtio_blk_init(DeviceState *dev, BlockConf *conf,
 struct virtio_net_conf;
 VirtIODevice *virtio_net_init(DeviceState *dev, NICConf *conf,
                               struct virtio_net_conf *net);
+void virtio_net_set_link_down(VirtIODevice *vdev, int link_down);
 typedef struct virtio_serial_conf virtio_serial_conf;
 VirtIODevice *virtio_serial_init(DeviceState *dev, virtio_serial_conf *serial);
 VirtIODevice *virtio_balloon_init(DeviceState *dev);
