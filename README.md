@@ -2,4 +2,4 @@ virtio-net-ipc device enabled QEMU
 ======================
 
 See following
-https://github.com/lagopus/dpdk-virtq-pmd
+https://github.com/lagopus/virtq-pmd-dpdk
